@@ -1,0 +1,9 @@
+{
+  "name": "projectsimulatorsimulator-server",
+  "version": "0.0.1",
+  "dependencies": {
+  },
+  "engines": {
+    "node": ">=8.0.0"
+  }
+}
