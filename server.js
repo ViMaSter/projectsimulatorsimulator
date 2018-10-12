@@ -17,12 +17,13 @@ class Session {
 				"y": 6
 			}
 		};
-		this.playerConnections = [];
+		this.connectedPlayerIDs = [];
 	}
 
-	addPlayer(player)
+	addPlayerByID(playerID)
 	{
-		this.playerConnections.push(player);
+		this.connectedPlayerIDs.push(playerID);
+		this.replicateChanges();
 	}
 
 	updateCarPosition(x, y)
@@ -36,10 +37,15 @@ class Session {
 
 	replicateChanges()
 	{
-		this.playerConnections.forEach(function(player)
+		this.connectedPlayerIDs.forEach(function(playerID)
 		{
-			// TODO: NOTIFY ALL LISTENERS OF NEW POSITION (REPLICATION?)
-		});
+			gameServer.updateReplica(this);
+		}.bind(this));
+	}
+
+	serialize()
+	{
+		return this.sessionData;
 	}
 };
 
@@ -47,18 +53,24 @@ class GameServer
 {
 	constructor()
 	{
-		this.sessions = {};
 		this.nextSessionID = 0;
+		this.sessions = {};
+
+		this.nextPlayerID = 0;
+		this.player = {};
+
 		this.gameLogic = {
-			"createSession": function(jsonMessage)
+			"createSession": function(playerID, jsonMessage)
 			{
 				const newSessionID = this.generateSessionID();
 				this.sessions[newSessionID] = new Session();
+				this.sessions[newSessionID].addPlayerByID(playerID);
 				console.log(`Created new session with ID ${newSessionID}`);
+				return {"sessionID": newSessionID};
 			},
-			"updateCarPosition": function(jsonMessage)
+			"updateCarPosition": function(playerID, jsonMessage)
 			{
-				if (jsonMessage.sessionID && typeof jsonMessage.sessionID == "function")
+				if (jsonMessage.sessionID && typeof jsonMessage.sessionID != "number")
 				{
 					console.error("updateCarPosition requires a 'sessionID'-parameter as number!");
 					return;
@@ -75,19 +87,24 @@ class GameServer
 		};
 	}
 
+	generatePlayerID()
+	{
+		return this.nextPlayerID++;
+	}
+
 	generateSessionID()
 	{
 		return this.nextSessionID++;
 	}
 
-	handleMessage(connection, jsonMessage)
+	handleMessage(playerID, jsonMessage)
 	{
 		// handle player assoication
 		if (jsonMessage.command)
 		{
 			if (typeof this.gameLogic[jsonMessage.command] == "function")
 			{
-				this.gameLogic[jsonMessage.command].apply(this, [jsonMessage]);
+				this.gameLogic[jsonMessage.command].apply(this, [playerID, jsonMessage]);
 			}
 			else
 			{
@@ -99,6 +116,60 @@ class GameServer
 
 		}
 	}
+
+	addPlayer(connection)
+	{
+		const playerID = this.generatePlayerID();
+		this.player[playerID] = connection;
+		console.log(`Added player ${playerID}`);
+
+		this.player[playerID].on('message', function(message) {
+			if (message.type === 'utf8')
+			{
+				try
+				{
+					const jsonMessage = JSON.parse(message.utf8Data);
+					gameServer.handleMessage(playerID, jsonMessage);
+					console.log("Successfully handled message!");
+					console.log(message.utf8Data);
+				}
+				catch(e)
+				{
+					console.group();
+					console.error("Invalid JSON string received!");
+					console.error(message);
+					console.error(e);
+					console.groupEnd();
+				}
+			}
+		});
+
+		this.player[playerID].on('close', function(connection) {
+			delete this.player[playerID];
+		}.bind(this));
+	}
+
+	sendMessageToPlayer(playerID, message)
+	{
+		if (typeof this.player[playerID] == "undefined")
+		{
+			console.error(`No player with ID ${playerID} is connected!`);
+			return false;
+		}
+
+		this.player[playerID].send(message);
+		console.log(`Sending message to player ${playerID}: ${message}`);
+		return true;
+	}
+
+	updateReplica(session)
+	{
+		console.log(session);
+		session.connectedPlayerIDs.forEach(function(playerID)
+		{
+			this.sendMessageToPlayer(playerID, JSON.stringify({"command": "sessionUpdate", "session": session.serialize()}));
+		}.bind(this));
+	}
 };
 
 const gameServer = new GameServer();
@@ -106,29 +177,6 @@ const gameServer = new GameServer();
 wsServer.on('request', function(request) {
 	var connection = request.accept(null, request.origin);
 
-	connection.on('message', function(message) {
-		if (message.type === 'utf8')
-		{
-			try
-			{
-				const jsonMessage = JSON.parse(message.utf8Data);
-				gameServer.handleMessage(connection, jsonMessage);
-				console.log("Successfully handled message!");
-				console.log(message.utf8Data);
-			}
-			catch(e)
-			{
-				console.group();
-				console.error("Invalid JSON string received!");
-				console.error(message);
-				console.error(e);
-				console.groupEnd();
-			}
-		}
-	});
-
-	connection.on('close', function(connection) {
-
-	});
+	gameServer.addPlayer(connection);
 });
 console.log(`Running at port ${process.env.PORT}`);
