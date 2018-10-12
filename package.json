@@ -2,6 +2,7 @@
   "name": "projectsimulatorsimulator-server",
   "version": "0.0.1",
   "dependencies": {
+    "websocket": "^1.0.28"
   },
   "engines": {
     "node": ">=8.0.0"
