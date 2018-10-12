@@ -37,10 +37,7 @@ class Session {
 
 	replicateChanges()
 	{
-		this.connectedPlayerIDs.forEach(function(playerID)
-		{
-			gameServer.updateReplica(this);
-		}.bind(this));
+		gameServer.updateReplica(this);
 	}
 
 	serialize()
@@ -67,6 +64,25 @@ class GameServer
 				this.sessions[newSessionID].addPlayerByID(playerID);
 				console.log(`Created new session with ID ${newSessionID}`);
 				return {"sessionID": newSessionID};
+			},
+			"joinSession": function(playerID, jsonMessage)
+			{
+				console.log(`Player ${playerID} attempting to join session ${jsonMessage.sessionID}`);
+				if (jsonMessage.sessionID < 0)
+				{
+					console.log("Invalid session id");
+					return {"sessionID": -1};
+				}
+
+				if (!this.sessions[jsonMessage.sessionID])
+				{
+					console.log("Session doesn't exist");
+					return {"sessionID": -1};
+				}
+
+				this.sessions[jsonMessage.sessionID].addPlayerByID(playerID);
+				console.log(`Added player ${playerID} to session ${jsonMessage.sessionID}`);
+				return {"sessionID": jsonMessage.sessionID};
 			},
 			"updateCarPosition": function(playerID, jsonMessage)
 			{
@@ -99,7 +115,6 @@ class GameServer
 
 	handleMessage(playerID, jsonMessage)
 	{
-		// handle player assoication
 		if (jsonMessage.command)
 		{
 			if (typeof this.gameLogic[jsonMessage.command] == "function")
@@ -110,10 +125,6 @@ class GameServer
 			{
 				console.error(`no gamelogic called "${jsonMessage.command}" available`)
 			}
-		}
-		else
-		{
-
 		}
 	}
 
@@ -151,7 +162,7 @@ class GameServer
 
 	sendMessageToPlayer(playerID, message)
 	{
-		if (typeof this.player[playerID] == "undefined")
+		if (!this.player[playerID])
 		{
 			console.error(`No player with ID ${playerID} is connected!`);
 			return false;
@@ -164,7 +175,6 @@ class GameServer
 
 	updateReplica(session)
 	{
-		console.log(session);
 		session.connectedPlayerIDs.forEach(function(playerID)
 		{
 			this.sendMessageToPlayer(playerID, JSON.stringify({"command": "sessionUpdate", "session": session.serialize()}));
