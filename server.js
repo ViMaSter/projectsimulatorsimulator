@@ -20,8 +20,9 @@ const wsServer = new ws.server({
 });
 
 class Session {
-	constructor()
+	constructor(ID)
 	{
+		this.ID = ID;
 		this.sessionData = {
 			"carPosition": {
 				"x": 5,
@@ -38,6 +39,7 @@ class Session {
 	addPlayerByID(playerID)
 	{
 		this.connectedPlayerIDs.push(playerID);
+		gameServer.sendMessageToPlayer(playerID, JSON.stringify({"command": "sessionJoin", "sessionID": this.ID, "session": session.serialize()}));
 		this.replicateChanges();
 	}
 
@@ -100,7 +102,7 @@ class GameServer
 			"createSession": function(playerID, jsonMessage)
 			{
 				const newSessionID = this.generateSessionID();
-				this.sessions[newSessionID] = new Session();
+				this.sessions[newSessionID] = new Session(newSessionID);
 				this.sessions[newSessionID].addPlayerByID(playerID);
 				console.log(`Created new session with ID ${newSessionID}`);
 				return {"sessionID": newSessionID};
