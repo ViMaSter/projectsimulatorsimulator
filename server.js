@@ -45,14 +45,20 @@ class Session {
 
 	addPlayerByID(playerID)
 	{
+		console.log(`Added player ${playerID} to session ${this.ID}`);
 		this.connectedPlayerIDs.push(playerID);
 		gameServer.sendMessageToPlayer(playerID, JSON.stringify({"command": "sessionJoin", "sessionID": this.ID, "mapName": this.mapName, "session": this.serialize()}));
 	}
 
 	removePlayerByID(playerID)
 	{
+		if (this.connectedPlayerIDs.indexOf(playerID) <= -1)
+		{
+			console.error(`Player ${playerID} is not part of session ${this.ID} (current player: ${this.connectedPlayerIDs.join(', ')})`);
+			return;
+		}
 		this.connectedPlayerIDs.remove(playerID);
-		gameServer.sendMessageToPlayer(playerID, "{}")
+		gameServer.sendMessageToPlayer(playerID, "{}");
 	}
 
 	updateCarPosition(x, y)
@@ -142,10 +148,15 @@ class GameServer
 			"joinSession": function(playerID, jsonMessage)
 			{
 				console.log(`Player ${playerID} attempting to join session ${jsonMessage.sessionID}`);
-				if (jsonMessage.sessionID < 0)
+				if (jsonMessage.sessionID < -1)
 				{
 					console.log("Invalid session id");
 					return {"sessionID": -1};
+				}
+
+				if (jsonMessage.sessionID == -1)
+				{
+					jsonMessage.sessionID = this.nextSessionID - 1;
 				}
 
 				if (!this.sessions[jsonMessage.sessionID])
@@ -155,14 +166,13 @@ class GameServer
 				}
 
 				this.sessions[jsonMessage.sessionID].addPlayerByID(playerID);
-				console.log(`Added player ${playerID} to session ${jsonMessage.sessionID}`);
 				return {"sessionID": jsonMessage.sessionID};
 			},
 			"updateCarPosition": function(playerID, jsonMessage)
 			{
 				if (typeof jsonMessage.sessionID != "number")
 				{
-					console.error("updateCarPosition requires a 'sessionID'-parameter as number!");
+					console.error(`updateCarPosition requires a 'sessionID'-parameter as number! (supplied: ${jsonMessage.sessionID} [${typeof jsonMessage.sessionID}])`);
 					return;
 				}
 				
@@ -178,7 +188,7 @@ class GameServer
 			{
 				if (typeof jsonMessage.sessionID != "number")
 				{
-					console.error("setCurrentRoute requires a 'sessionID'-parameter as number!");
+					console.error(`setCurrentRoute requires a 'sessionID'-parameter as number! (supplied: ${jsonMessage.sessionID} [${typeof jsonMessage.sessionID}])`);
 					return;
 				}
 				if (typeof jsonMessage.start != "string" && typeof jsonMessage.end != "string")
@@ -193,7 +203,7 @@ class GameServer
 			{
 				if (typeof jsonMessage.sessionID != "number")
 				{
-					console.error("finishRoute requires a 'sessionID'-parameter as number!");
+					console.error(`finishRoute requires a 'sessionID'-parameter as number! (supplied: ${jsonMessage.sessionID} [${typeof jsonMessage.sessionID}])`);
 					return;
 				}
 				this.sessions[jsonMessage.sessionID].finishRoute();
@@ -202,10 +212,16 @@ class GameServer
 			{
 				if (typeof jsonMessage.sessionID != "number")
 				{
-					console.error("leaveSession requires a 'sessionID'-parameter as number!");
+					console.error(`leaveSession requires a 'sessionID'-parameter as number! (supplied: ${jsonMessage.sessionID} [${typeof jsonMessage.sessionID}])`);
 					return;
 				}
 				this.sessions[jsonMessage.sessionID].removePlayerByID(playerID);
+				console.log(`Players left in session ${jsonMessage.sessionID}: ${this.sessions[jsonMessage.sessionID].connectedPlayerIDs.length}`);
+				if (!this.sessions[jsonMessage.sessionID].connectedPlayerIDs.length)
+				{
+					console.log(`Session ${jsonMessage.sessionID} has no players left; discarding it`);
+					delete this.sessions[jsonMessage.sessionID];
+				}
 			}
 		};
 	}
@@ -239,7 +255,7 @@ class GameServer
 		{
 			if (typeof this.gameLogic[jsonMessage.command] == "function")
 			{
-				this.gameLogic[jsonMessage.command].apply(this, [playerID, jsonMessage]);
+				this.gameLogic[jsonMessage.command].apply(this, [parseInt(playerID), jsonMessage]);
 			}
 			else
 			{
@@ -251,6 +267,7 @@ class GameServer
 	addPlayer(connection)
 	{
 		const playerID = this.generatePlayerID();
+		connection.playerID = playerID;
 		this.player[playerID] = connection;
 		console.log(`Added player ${playerID}`);
 
@@ -275,13 +292,30 @@ class GameServer
 			}
 		});
 
-		this.player[playerID].on('close', function(connection) {
-			delete this.player[playerID];
+		this.player[playerID].on('close', function(reasonCode, description) {
+			this.removePlayer(connection);
 		}.bind(this));
+	}
+
+	removePlayer(connection)
+	{
+		const playerIDOfConnection = parseInt(connection.playerID);
+		console.log(`Connection from player ${playerIDOfConnection} closed...`);
+		for (const sessionID in this.sessions)
+		{
+			const playerIndex = this.sessions[sessionID].connectedPlayerIDs.indexOf(playerIDOfConnection);
+			if (playerIndex != -1)
+			{
+				console.log(`Gracefully removing player ${playerIDOfConnection} from session ${sessionID}...`);
+				this.gameLogic.leaveSession.apply(this, [playerIDOfConnection, {"sessionID": parseInt(sessionID)}]);
+			}
+		}
+		delete this.player[playerIDOfConnection];
 	}
 
 	sendMessageToPlayer(playerID, message)
 	{
+		playerID = parseInt(playerID);
 		if (!this.player[playerID])
 		{
 			console.error(`No player with ID ${playerID} is connected!`);
@@ -297,6 +331,7 @@ class GameServer
 	{
 		session.connectedPlayerIDs.forEach(function(playerID)
 		{
+			playerID = parseInt(playerID);
 			this.sendMessageToPlayer(playerID, JSON.stringify({"command": "sessionUpdate", "session": session.serialize()}));
 		}.bind(this));
 	}
