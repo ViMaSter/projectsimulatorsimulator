@@ -39,8 +39,7 @@ class Session {
 	addPlayerByID(playerID)
 	{
 		this.connectedPlayerIDs.push(playerID);
-		gameServer.sendMessageToPlayer(playerID, JSON.stringify({"command": "sessionJoin", "sessionID": this.ID, "session": session.serialize()}));
-		this.replicateChanges();
+		gameServer.sendMessageToPlayer(playerID, JSON.stringify({"command": "sessionJoin", "sessionID": this.ID, "session": this.serialize()}));
 	}
 
 	removePlayerByID(playerID)
