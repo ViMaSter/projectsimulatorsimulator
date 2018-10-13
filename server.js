@@ -91,22 +91,8 @@ class Session {
 
 	finishRoute()
 	{
-		const start = Math.floor(Math.random() * this.validStations.length);
-		const end = Math.floor(Math.random() * this.validStations.length);
-		if (this.sessionData.currentRoute.start == start)
-		{
-			start++;
-		}
-		if (this.sessionData.currentRoute.end == end)
-		{
-			end++;
-		}
-		if (start == end)
-		{
-			end = (end+1) % this.validStations.length;
-		}
-		this.sessionData.currentRoute.start = this.validStations[start];
-		this.sessionData.currentRoute.end = this.validStations[end];
+		this.sessionData.currentRoute.start = "";
+		this.sessionData.currentRoute.end = "";
 
 		gameServer.updateReplica(this);
 	}
