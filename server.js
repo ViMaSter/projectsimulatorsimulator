@@ -1,3 +1,14 @@
+Array.prototype.remove = function() {
+    var what, a = arguments, L = a.length, ax;
+    while (L && this.length) {
+        what = a[--L];
+        while ((ax = this.indexOf(what)) !== -1) {
+            this.splice(ax, 1);
+        }
+    }
+    return this;
+};
+
 const ws = require('websocket');
 const http = require('http');
 
@@ -15,6 +26,10 @@ class Session {
 			"carPosition": {
 				"x": 5,
 				"y": 6
+			},
+			"currentRoute": {
+				"start": "",
+				"end": ""
 			}
 		};
 		this.connectedPlayerIDs = [];
@@ -24,6 +39,12 @@ class Session {
 	{
 		this.connectedPlayerIDs.push(playerID);
 		this.replicateChanges();
+	}
+
+	removePlayerByID(playerID)
+	{
+		this.connectedPlayerIDs.remove(playerID);
+		gameServer.sendMessageToPlayer(playerID, "{}")
 	}
 
 	updateCarPosition(x, y)
@@ -37,6 +58,25 @@ class Session {
 
 	replicateChanges()
 	{
+		gameServer.updateReplica(this);
+	}
+
+	setCurrentRoute(start, end)
+	{
+		if (this.sessionData.currentRoute.start == "" && this.sessionData.currentRoute.end == "")
+		{
+			this.sessionData.currentRoute.start = start;
+			this.sessionData.currentRoute.end = end;
+		}
+
+		gameServer.updateReplica(this);
+	}
+
+	finishRoute()
+	{
+		this.sessionData.currentRoute.start = "";
+		this.sessionData.currentRoute.end = "";
+
 		gameServer.updateReplica(this);
 	}
 
@@ -86,7 +126,7 @@ class GameServer
 			},
 			"updateCarPosition": function(playerID, jsonMessage)
 			{
-				if (jsonMessage.sessionID && typeof jsonMessage.sessionID != "number")
+				if (typeof jsonMessage.sessionID != "number")
 				{
 					console.error("updateCarPosition requires a 'sessionID'-parameter as number!");
 					return;
@@ -99,6 +139,39 @@ class GameServer
 				}
 
 				this.sessions[jsonMessage.sessionID].updateCarPosition(jsonMessage.x, jsonMessage.y);
+			},
+			"setCurrentRoute": function(playerID, jsonMessage)
+			{
+				if (typeof jsonMessage.sessionID != "number")
+				{
+					console.error("setCurrentRoute requires a 'sessionID'-parameter as number!");
+					return;
+				}
+				if (typeof jsonMessage.start != "string" && typeof jsonMessage.end != "string")
+				{
+					console.error("updateCarPosition requires a 'start'- and 'end'-parameter as string!");
+					return;
+				}
+				
+				this.sessions[jsonMessage.sessionID].setCurrentRoute(jsonMessage.start, jsonMessage.end);
+			},
+			"finishRoute": function(playerID, jsonMessage)
+			{
+				if (typeof jsonMessage.sessionID != "number")
+				{
+					console.error("finishRoute requires a 'sessionID'-parameter as number!");
+					return;
+				}
+				this.sessions[jsonMessage.sessionID].finishRoute();
+			},
+			"leaveSession": function(playerID, jsonMessage)
+			{
+				if (typeof jsonMessage.sessionID != "number")
+				{
+					console.error("leaveSession requires a 'sessionID'-parameter as number!");
+					return;
+				}
+				this.sessions[jsonMessage.sessionID].removePlayerByID(playerID);
 			}
 		};
 	}
