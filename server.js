@@ -9,6 +9,7 @@ Array.prototype.remove = function() {
     return this;
 };
 
+const fs = require("fs");
 const ws = require('websocket');
 const http = require('http');
 
@@ -20,9 +21,15 @@ const wsServer = new ws.server({
 });
 
 class Session {
-	constructor(ID)
+	constructor(ID, mapName)
 	{
 		this.ID = ID;
+		this.mapName = mapName;
+		this.validStations = [];
+		gameServer.maps[mapName].routes.forEach(function(landmark)
+		{
+			this.validStations.push(landmark.name);
+		}.bind(this));
 		this.sessionData = {
 			"carPosition": {
 				"x": 5,
@@ -39,7 +46,7 @@ class Session {
 	addPlayerByID(playerID)
 	{
 		this.connectedPlayerIDs.push(playerID);
-		gameServer.sendMessageToPlayer(playerID, JSON.stringify({"command": "sessionJoin", "sessionID": this.ID, "session": this.serialize()}));
+		gameServer.sendMessageToPlayer(playerID, JSON.stringify({"command": "sessionJoin", "sessionID": this.ID, "mapName": this.mapName, "session": this.serialize()}));
 	}
 
 	removePlayerByID(playerID)
@@ -66,6 +73,15 @@ class Session {
 	{
 		if (this.sessionData.currentRoute.start == "" && this.sessionData.currentRoute.end == "")
 		{
+			if (this.validStations.indexOf(start) <= -1)
+			{
+				console.log(`Start point ${start} does not exist on the map ${this.mapName}!`);
+			}
+			if (this.validStations.indexOf(end) <= -1)
+			{
+				console.log(`Start point ${end} does not exist on the map ${this.mapName}!`);
+			}
+
 			this.sessionData.currentRoute.start = start;
 			this.sessionData.currentRoute.end = end;
 		}
@@ -75,8 +91,22 @@ class Session {
 
 	finishRoute()
 	{
-		this.sessionData.currentRoute.start = "";
-		this.sessionData.currentRoute.end = "";
+		const start = Math.floor(Math.random() * this.validStations.length);
+		const end = Math.floor(Math.random() * this.validStations.length);
+		if (this.sessionData.currentRoute.start == start)
+		{
+			start++;
+		}
+		if (this.sessionData.currentRoute.end == end)
+		{
+			end++;
+		}
+		if (start == end)
+		{
+			end = (end+1) % this.validStations.length;
+		}
+		this.sessionData.currentRoute.start = this.validStations[start];
+		this.sessionData.currentRoute.end = this.validStations[end];
 
 		gameServer.updateReplica(this);
 	}
@@ -89,19 +119,36 @@ class Session {
 
 class GameServer
 {
-	constructor()
+	LoadMaps()
 	{
-		this.nextSessionID = 0;
-		this.sessions = {};
+		this.maps = {};
 
-		this.nextPlayerID = 0;
-		this.player = {};
+		const files = fs.readdirSync("maps");
+		files.forEach(file => {
+			console.log(`Attempting to load filer '${file}'...`)
+			const fileContent = fs.readFileSync("maps/"+file);
+			this.maps[file.replace(".json", "")] = JSON.parse(fileContent);
+			console.log(`Loading '${file}'...DONE!`)
+		});
+		console.group(`Available maps:`)
+		console.log(this.maps);
+		console.groupEnd()
+	}
 
+	SetupGameLogic()
+	{
 		this.gameLogic = {
 			"createSession": function(playerID, jsonMessage)
 			{
+				console.log(jsonMessage);
+
+				if (!jsonMessage.mapName || !this.maps[jsonMessage.mapName])
+				{
+					console.log(`Cannot create session; '${jsonMessage.mapName}' is not a valid map name!`);
+				}
+
 				const newSessionID = this.generateSessionID();
-				this.sessions[newSessionID] = new Session(newSessionID);
+				this.sessions[newSessionID] = new Session(newSessionID, jsonMessage.mapName);
 				this.sessions[newSessionID].addPlayerByID(playerID);
 				console.log(`Created new session with ID ${newSessionID}`);
 				return {"sessionID": newSessionID};
@@ -175,6 +222,19 @@ class GameServer
 				this.sessions[jsonMessage.sessionID].removePlayerByID(playerID);
 			}
 		};
+	}
+
+	constructor()
+	{
+		this.nextSessionID = 0;
+		this.sessions = {};
+
+		this.nextPlayerID = 0;
+		this.player = {};
+
+		this.LoadMaps();
+
+		this.SetupGameLogic();
 	}
 
 	generatePlayerID()
