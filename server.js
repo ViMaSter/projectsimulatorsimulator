@@ -157,7 +157,7 @@ class GameServer
 
 				if (!this.sessions[jsonMessage.sessionID])
 				{
-					console.log("Session doesn't exist");
+					console.log(`Session ${jsonMessage.sessionID} (no longer) doesn't exist`);
 					return {"sessionID": -1};
 				}
 
