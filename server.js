@@ -45,7 +45,6 @@ class Session {
 
 	addPlayerByID(playerID)
 	{
-		console.log(`Added player ${playerID} to session ${this.ID}`);
 		this.connectedPlayerIDs.push(playerID);
 		gameServer.sendMessageToPlayer(playerID, JSON.stringify({"command": "sessionJoin", "sessionID": this.ID, "mapName": this.mapName, "session": this.serialize()}));
 	}
@@ -66,7 +65,6 @@ class Session {
 		this.sessionData.carPosition.x = x; 
 		this.sessionData.carPosition.y = y; 
 
-		console.log(`Car now at [${x}, ${y}]`);
 		this.replicateChanges();
 	}
 
@@ -81,11 +79,11 @@ class Session {
 		{
 			if (this.validStations.indexOf(start) <= -1)
 			{
-				console.log(`Start point ${start} does not exist on the map ${this.mapName}!`);
+				console.warn(`Start point ${start} does not exist on the map ${this.mapName}!`);
 			}
 			if (this.validStations.indexOf(end) <= -1)
 			{
-				console.log(`Start point ${end} does not exist on the map ${this.mapName}!`);
+				console.warn(`Start point ${end} does not exist on the map ${this.mapName}!`);
 			}
 
 			this.sessionData.currentRoute.start = start;
@@ -132,8 +130,6 @@ class GameServer
 		this.gameLogic = {
 			"createSession": function(playerID, jsonMessage)
 			{
-				console.log(jsonMessage);
-
 				if (!jsonMessage.mapName || !this.maps[jsonMessage.mapName])
 				{
 					console.log(`Cannot create session; '${jsonMessage.mapName}' is not a valid map name!`);
@@ -278,13 +274,10 @@ class GameServer
 				{
 					const jsonMessage = JSON.parse(message.utf8Data);
 					gameServer.handleMessage(playerID, jsonMessage);
-					console.log("Successfully handled message!");
-					console.log(message.utf8Data);
 				}
 				catch(e)
 				{
-					console.group();
-					console.error("Invalid JSON string received!");
+					console.group("Invalid JSON string received!");
 					console.error(message);
 					console.error(e);
 					console.groupEnd();
@@ -323,7 +316,6 @@ class GameServer
 		}
 
 		this.player[playerID].send(message);
-		console.log(`Sending message to player ${playerID}: ${message}`);
 		return true;
 	}
 
